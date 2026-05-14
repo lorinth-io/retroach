@@ -41,6 +41,12 @@ local gameSetIds = T{
 		Name = 'Hardcore Hero',
 		Texture = ''
 	},
+	ChainsOfPromathia = T{
+		GameId = 28359,
+		Icon = 'icons/chainsofpromathia.png',
+		Name = 'Chains of Promathia',
+		Texture = ''
+	}
 };
 
 -- Default Settings
@@ -71,6 +77,7 @@ local gameOrder = T{
     'HeroOfNations',
     'RiseOfTheZilart',
     'HardcoreHero',
+	'ChainsOfPromathia'
 };
 
 local gameProgressData = {};
@@ -471,7 +478,7 @@ local function render_splash_window()
     push_retro_style();
 
     imgui.SetNextWindowBgAlpha(0.96);
-    imgui.SetNextWindowSize({ 980, 420 }, ImGuiCond_FirstUseEver);
+    imgui.SetNextWindowSize({ 980, 580 }, ImGuiCond_FirstUseEver);
 
     splashWindowOpen[1] = viewSplash;
     imgui.Begin('Retro Achievements Games', splashWindowOpen);
