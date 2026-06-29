@@ -1,6 +1,6 @@
 addon.name      = 'retroach';
 addon.author    = 'lorinth';
-addon.version   = '1.0';
+addon.version   = '1.1';
 addon.desc      = 'Loads your achievement progress from retro achievements.';
 
 require 'common';
@@ -526,9 +526,9 @@ local function render_splash_window()
     imgui.Separator();
     imgui.Spacing();
 
-    local availableWidth = imgui.GetContentRegionAvail();
+    local width = imgui.GetContentRegionAvail();
     local spacing = 12;
-    local cardWidth = math.floor((availableWidth - spacing) / 2);
+    local cardWidth = math.floor((width - spacing) / 2);
     local cardHeight = 160;
     local iconSize = 96;
 
@@ -540,7 +540,7 @@ local function render_splash_window()
 		local awarded, total, percent = get_progress_values(data);
 		local highestAwardKind = data.HighestAwardKind or '';
 
-		imgui.BeginChild('game_card_' .. tostring(gameKey), { cardWidth, cardHeight }, true);
+		imgui.BeginChild('game_card_' .. tostring(gameKey), { cardWidth, cardHeight }, ImGuiChildFlags_Borders);
 
 		local cardHovered = imgui.IsWindowHovered();
 
@@ -557,7 +557,7 @@ local function render_splash_window()
 		if (game.Texture ~= nil) then
 			imgui.Image(tonumber(ffi.cast('uint32_t', game.Texture.image)), { iconSize, iconSize });
 		else
-			imgui.BeginChild('missing_icon_' .. tostring(gameKey), { iconSize, iconSize }, true);
+			imgui.BeginChild('missing_icon_' .. tostring(gameKey), { iconSize, iconSize }, ImGuiChildFlags_Borders);
 			imgui.TextColored({ 0.55, 0.75, 1.00, 1.00 }, 'No Icon');
 			imgui.EndChild();
 		end
@@ -585,6 +585,9 @@ local function render_splash_window()
 		if (imgui.IsItemHovered() and imgui.IsMouseClicked(0)) then
 			select_game(gameKey);
 			viewSplash = false;
+			
+			imgui.End();
+			pop_retro_style();
 			return;
 		end
 
@@ -632,10 +635,15 @@ local function render_achievement_window()
 
 	imgui.Text(selectedName);
 	if (imgui.Button('Back to Games')) then
+		imgui.PopStyleColor();
+		
 		viewSplash = true;
 		viewAchievements = false;
 		retroAchData = nil;
 		selectedGameKey = nil;
+		
+		imgui.End();
+		pop_retro_style();
 		return;
 	end
 
@@ -724,7 +732,7 @@ local function render_achievement_window()
     imgui.Separator();
     imgui.Spacing();
 
-    imgui.BeginChild('achievement_list_pane', { 420, 0 }, true);
+    imgui.BeginChild('achievement_list_pane', { 420, 0 }, ImGuiChildFlags_Borders);
 
     for i = 1, #filtered do
         local a = filtered[i];
@@ -749,7 +757,7 @@ local function render_achievement_window()
 
     imgui.SameLine();
 
-    imgui.BeginChild('achievement_detail_pane', { 0, 0 }, true);
+    imgui.BeginChild('achievement_detail_pane', { 0, 0 }, ImGuiChildFlags_Borders);
 
     if (#filtered > 0) then
         local current = filtered[selectedAchievementIndex];
