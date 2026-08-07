@@ -46,6 +46,12 @@ local gameSetIds = T{
 		Icon = 'icons/chainsofpromathia.png',
 		Name = 'Chains of Promathia',
 		Texture = ''
+	},
+	TreasuresOfAhtUrhgan = T{
+		GameId = 41186,
+		Icon = 'icons/toau_pearl.png',
+		Name = 'Treasures of Aht Urhgan',
+		Texture = ''
 	}
 };
 
@@ -77,7 +83,8 @@ local gameOrder = T{
     'HeroOfNations',
     'RiseOfTheZilart',
     'HardcoreHero',
-	'ChainsOfPromathia'
+	'ChainsOfPromathia',
+	'TreasuresOfAhtUrhgan'
 };
 
 local gameProgressData = {};
@@ -513,7 +520,7 @@ local function render_splash_window()
 	imgui.SameLine();
 	imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, string.format('%d / %d', totalAwardedAll, totalAchievementsAll));
 	imgui.SameLine();
-	imgui.TextColored({ 0.95, 0.90, 0.55, 1.00 }, string.format('(%s', string.format('%.1f%%', totalPercentAll * 100.0)) .. '%)');
+	imgui.TextColored({ 0.95, 0.90, 0.55, 1.00 }, string.format('(%s', string.format('%.1f%%', totalPercentAll * 100.0)) .. ')');
 
 	imgui.PushStyleColor(ImGuiCol_FrameBg, { 0.24, 0.21, 0.12, 1.00 });
 	imgui.PushStyleColor(ImGuiCol_PlotHistogram, { 0.95, 0.82, 0.30, 1.00 });
@@ -567,7 +574,7 @@ local function render_splash_window()
 		local startX, startY = imgui.GetCursorPos();
 
 		imgui.SetCursorPos({ startX, startY + 4 });
-		imgui.TextColored({ 0.70, 0.70, 0.75, 1.00 }, string.format('%d of %d unlocked (%s', awarded, total, string.format('%.1f%%', percent * 100.0)) .. '%)');
+		imgui.TextColored({ 0.70, 0.70, 0.75, 1.00 }, string.format('%d of %d unlocked (%s', awarded, total, string.format('%.1f%%', percent * 100.0)) .. ')');
 
 		imgui.SetCursorPos({ startX, startY + 28 });
 		
