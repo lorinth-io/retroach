@@ -49,7 +49,7 @@ local gameSetIds = T{
 	},
 	TreasuresOfAhtUrhgan = T{
 		GameId = 41186,
-		Icon = 'icons/toau_pearl.png',
+		Icon = 'icons/treasuresofahturhgan.png',
 		Name = 'Treasures of Aht Urhgan',
 		Texture = ''
 	}
