@@ -1,6 +1,6 @@
 addon.name      = 'retroach';
 addon.author    = 'lorinth';
-addon.version   = '1.1';
+addon.version   = '1.2';
 addon.desc      = 'Loads your achievement progress from retro achievements.';
 
 require 'common';
@@ -55,6 +55,119 @@ local gameSetIds = T{
 	}
 };
 
+-- Job-specific achievement sets.
+-- Add each job set here and add its key to jobOrder below.
+local jobSetIds = T{
+	Warrior = T{
+		GameId = 28421,
+		Icon = 'icons/Jobs/WAR.png',
+		Name = 'Warrior',
+		Texture = ''
+	},
+	Monk = T{
+		GameId = 28414,
+		Icon = 'icons/Jobs/MNK.png',
+		Name = 'Monk',
+		Texture = ''
+	},
+	WhiteMage = T{
+		GameId = 28422,
+		Icon = 'icons/Jobs/WHM.png',
+		Name = 'White Mage',
+		Texture = ''
+	},
+	BlackMage = T{
+		GameId = 28409,
+		Icon = 'icons/Jobs/BLM.png',
+		Name = 'Black Mage',
+		Texture = ''
+	},
+	RedMage = T{
+		GameId = 28321,
+		Icon = 'icons/Jobs/RDM.png',
+		Name = 'Red Mage',
+		Texture = ''
+	},
+	Thief = T{
+		GameId = 28420,
+		Icon = 'icons/Jobs/THF.png',
+		Name = 'Thief',
+		Texture = ''
+	},
+	Paladin = T{
+		GameId = 28416,
+		Icon = 'icons/Jobs/PLD.png',
+		Name = 'Paladin',
+		Texture = ''
+	},
+	DarkKnight = T{
+		GameId = 28413,
+		Icon = 'icons/Jobs/DRK.png',
+		Name = 'Dark Knight',
+		Texture = ''
+	},
+	BeastMaster = T{
+		GameId = 28411,
+		Icon = 'icons/Jobs/BST.png',
+		Name = 'Beast Master',
+		Texture = ''
+	},
+	Bard = T{
+		GameId = 28410,
+		Icon = 'icons/Jobs/BRD.png',
+		Name = 'Bard',
+		Texture = ''
+	},
+	Ranger = T{
+		GameId = 28417,
+		Icon = 'icons/Jobs/RNG.png',
+		Name = 'Ranger',
+		Texture = ''
+	},
+	Samurai = T{
+		GameId = 28418,
+		Icon = 'icons/Jobs/SAM.png',
+		Name = 'Samurai',
+		Texture = ''
+	},
+	Ninja = T{
+		GameId = 28415,
+		Icon = 'icons/Jobs/NIN.png',
+		Name = 'Ninja',
+		Texture = ''
+	},
+	Dragoon = T{
+		GameId = 28412,
+		Icon = 'icons/Jobs/DRG.png',
+		Name = 'Dragoon',
+		Texture = ''
+	},
+	Summoner = T{
+		GameId = 28419,
+		Icon = 'icons/Jobs/SMN.png',
+		Name = 'Summoner',
+		Texture = ''
+	},
+	BlueMage = T{
+		GameId = 45251,
+		Icon = 'icons/horizon.png',
+		Name = 'BlueMage',
+		Texture = ''
+	},
+	Corsair = T{
+		GameId = 45250,
+		Icon = 'icons/horizon.png',
+		Name = 'Corsair',
+		Texture = ''
+	},
+	PuppetMaster = T{
+		GameId = 45252,
+		Icon = 'icons/horizon.png',
+		Name = 'Puppet Master',
+		Texture = ''
+	},
+};
+
 -- Default Settings
 local default_settings = T{
     font = T{
@@ -87,9 +200,33 @@ local gameOrder = T{
 	'TreasuresOfAhtUrhgan'
 };
 
+local jobOrder = T{
+	'Warrior',
+	'Monk',
+	'WhiteMage',
+	'BlackMage',
+	'RedMage',
+	'Thief',
+	'Paladin',
+	'DarkKnight',
+	'BeastMaster',
+	'Bard',
+	'Ranger',
+	'Samurai',
+	'Ninja',
+	'Dragoon',
+	'Summoner',
+	'BlueMage',
+	'Corsair',
+	'PuppetMaster'
+};
+
 local gameProgressData = {};
+local jobProgressData = {};
 local selectedGameKey = nil;
+local selectedSetType = nil;
 local viewSplash = false;
+local viewJobSplash = false;
 local iconTextures = {};
 local retroAchData = nil;
 local viewAchievements = false;
@@ -104,6 +241,17 @@ local setupName = setupName or { '' };
 local setupApiKey = setupApiKey or { '' };
 local setupMessage = '';
 local setupMessageColor = { 0.80, 0.80, 0.80, 1.00 };
+
+-- Progressive loading state.
+local loadQueue = {};
+local loadQueueIndex = 0;
+local loadQueueTotal = 0;
+local loadQueueLabel = '';
+local loadQueueActive = false;
+local loadQueueDelayFrames = 0;
+local loadQueueSetIds = nil;
+local loadQueueProgressData = nil;
+local loadQueueOnComplete = nil;
 
 --[[ 
 * Updates the addon settings.
@@ -196,14 +344,15 @@ local function get_progress_values(data)
     return awarded, total, percent;
 end
 
-local function select_game(gameKey)
-    local game = gameSetIds[gameKey];
+local function select_game(gameKey, setIds, progressData, setType)
+    local game = setIds[gameKey];
     if (game == nil) then
         return;
     end
 
-    retroAchData = gameProgressData[gameKey];
+    retroAchData = progressData[gameKey];
     selectedGameKey = gameKey;
+    selectedSetType = setType;
     viewAchievements = (retroAchData ~= nil);
 end
 
@@ -244,27 +393,87 @@ local function get_game_info(gameId, updateSelectedView)
     return nil, code, headers, status;
 end
 
+local function clear_progress_data(progressData)
+    for key in pairs(progressData) do
+        progressData[key] = nil;
+    end
+end
+
+local function begin_progressive_load(setIds, setOrder, progressData, force, label)
+    if loadQueueActive then
+        return;
+    end
+
+    if (not force) and next(progressData) ~= nil then
+        return;
+    end
+
+    clear_progress_data(progressData);
+
+    loadQueue = {};
+    for i = 1, #setOrder do
+        table.insert(loadQueue, setOrder[i]);
+    end
+
+    loadQueueIndex = 0;
+    loadQueueTotal = #loadQueue;
+    loadQueueLabel = label or 'achievement sets';
+    loadQueueSetIds = setIds;
+    loadQueueProgressData = progressData;
+    loadQueueActive = loadQueueTotal > 0;
+    loadQueueDelayFrames = loadQueueActive and 1 or 0;
+end
+
+local function process_progressive_load()
+    if not loadQueueActive then
+        return;
+    end
+
+    if loadQueueDelayFrames > 0 then
+        loadQueueDelayFrames = loadQueueDelayFrames - 1;
+        return;
+    end
+
+    if loadQueueIndex >= loadQueueTotal then
+        loadQueueActive = false;
+        return;
+    end
+
+    loadQueueIndex = loadQueueIndex + 1;
+
+    local gameKey = loadQueue[loadQueueIndex];
+    local game = loadQueueSetIds and loadQueueSetIds[gameKey] or nil;
+
+    if game ~= nil and game.GameId ~= nil then
+        loadQueueProgressData[gameKey] = get_game_info(game.GameId, false);
+    end
+
+    if loadQueueIndex >= loadQueueTotal then
+        loadQueueActive = false;
+    end
+end
+
 local function load_all_game_progress(force)
-	if force or next(gameProgressData) == nil then
-		gameProgressData = {};
-		retroAchData = nil;
-		viewAchievements = false;
-		viewSplash = false;
-		selectedGameKey = nil;
-
-		for i = 1, #gameOrder do
-			local gameKey = gameOrder[i];
-			local game = gameSetIds[gameKey];
-
-			if (game ~= nil and game.GameId ~= nil) then
-				local decoded = get_game_info(game.GameId, false);
-				gameProgressData[gameKey] = decoded;
-			end
-		end
-	end
+    if force or next(gameProgressData) == nil then
+        retroAchData = nil;
+        viewAchievements = false;
+        selectedGameKey = nil;
+        selectedSetType = nil;
+    end
 
     viewSplash = true;
+    viewJobSplash = false;
     setupMessage = '';
+
+    begin_progressive_load(gameSetIds, gameOrder, gameProgressData, force, 'main achievement sets');
+end
+
+local function load_all_job_progress(force)
+    viewSplash = false;
+    viewJobSplash = true;
+    setupMessage = '';
+
+    begin_progressive_load(jobSetIds, jobOrder, jobProgressData, force, 'job-specific achievement sets');
 end
 
 --[[ 
@@ -280,16 +489,21 @@ ashita.events.register('load', 'load_cb', function ()
     retroach.font = fonts.new(retroach.settings.font);
     refresh_setup_buffers();
 	
-    for _, record in pairs(gameSetIds) do
-        record.Texture = nil;
+    local function load_set_textures(setIds)
+        for _, record in pairs(setIds) do
+            record.Texture = nil;
 
-        if (record.Icon ~= nil and record.Icon ~= '') then
-            local texture = LoadTexture(record.Icon);
-            if (texture ~= nil and texture.image ~= nil) then
-                record.Texture = texture;
+            if (record.Icon ~= nil and record.Icon ~= '') then
+                local texture = LoadTexture(record.Icon);
+                if (texture ~= nil and texture.image ~= nil) then
+                    record.Texture = texture;
+                end
             end
         end
     end
+
+    load_set_textures(gameSetIds);
+    load_set_textures(jobSetIds);
 end);
 
 --[[ 
@@ -476,6 +690,86 @@ local function render_setup_window()
     pop_retro_style();
 end
 
+local function render_set_card(gameKey, game, data, cardWidth, cardHeight, iconSize, childPrefix)
+    if game == nil then
+        return false;
+    end
+
+    local awarded, total, percent = get_progress_values(data);
+    local highestAwardKind = (data and data.HighestAwardKind) or '';
+
+    imgui.BeginChild(childPrefix .. tostring(gameKey), { cardWidth, cardHeight }, ImGuiChildFlags_Borders);
+
+    local cardHovered = imgui.IsWindowHovered();
+
+    if (cardHovered) then
+        imgui.PushStyleColor(ImGuiCol_Text, { 1.00, 0.95, 0.70, 1.00 });
+    else
+        imgui.PushStyleColor(ImGuiCol_Text, { 0.95, 0.90, 0.55, 1.00 });
+    end
+    imgui.Text(game.Name or gameKey);
+    imgui.PopStyleColor();
+
+    imgui.Spacing();
+
+    if (game.Texture ~= nil) then
+        imgui.Image(tonumber(ffi.cast('uint32_t', game.Texture.image)), { iconSize, iconSize });
+    else
+        imgui.BeginChild('missing_icon_' .. childPrefix .. tostring(gameKey), { iconSize, iconSize }, ImGuiChildFlags_Borders);
+        imgui.TextColored({ 0.55, 0.75, 1.00, 1.00 }, 'No Icon');
+        imgui.EndChild();
+    end
+
+    imgui.SameLine();
+
+    local startX, startY = imgui.GetCursorPos();
+
+    imgui.SetCursorPos({ startX, startY + 4 });
+    imgui.TextColored({ 0.70, 0.70, 0.75, 1.00 }, string.format('%d of %d unlocked (%s', awarded, total, string.format('%.1f%%', percent * 100.0)) .. ')');
+
+    imgui.SetCursorPos({ startX, startY + 28 });
+    render_highest_award_progressbar(percent, { -1, 16 }, highestAwardKind);
+
+    imgui.SetCursorPos({ startX, startY + 54 });
+    if (cardHovered) then
+        imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, 'Open achievements');
+    else
+        imgui.TextColored({ 0.45, 0.45, 0.50, 1.00 }, 'Open achievements');
+    end
+
+    imgui.EndChild();
+
+    return imgui.IsItemHovered() and imgui.IsMouseClicked(0);
+end
+
+local function render_job_bucket(cardWidth, cardHeight)
+    imgui.BeginChild('job_specific_bucket', { cardWidth, cardHeight }, ImGuiChildFlags_Borders);
+
+    local cardHovered = imgui.IsWindowHovered();
+    if (cardHovered) then
+        imgui.PushStyleColor(ImGuiCol_Text, { 1.00, 0.95, 0.70, 1.00 });
+    else
+        imgui.PushStyleColor(ImGuiCol_Text, { 0.95, 0.90, 0.55, 1.00 });
+    end
+    imgui.Text('Job Specific');
+    imgui.PopStyleColor();
+
+    imgui.Spacing();
+    imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, 'Job achievement sets');
+    imgui.Spacing();
+    imgui.TextColored({ 0.70, 0.70, 0.75, 1.00 }, string.format('%d sets available', #jobOrder));
+    imgui.Spacing();
+
+    if (cardHovered) then
+        imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, 'Open job sets');
+    else
+        imgui.TextColored({ 0.45, 0.45, 0.50, 1.00 }, 'Open job sets');
+    end
+
+    imgui.EndChild();
+    return imgui.IsItemHovered() and imgui.IsMouseClicked(0);
+end
+
 local splashWindowOpen = T{};
 local function render_splash_window()
     if (not viewSplash) then
@@ -488,15 +782,11 @@ local function render_splash_window()
     imgui.SetNextWindowSize({ 980, 580 }, ImGuiCond_FirstUseEver);
 
     splashWindowOpen[1] = viewSplash;
-    imgui.Begin('Retro Achievements Games', splashWindowOpen);
+    imgui.Begin('Retro Achievements', splashWindowOpen);
 
     if (not splashWindowOpen[1]) then
         viewSplash = false;
     end
-
-    imgui.PushStyleColor(ImGuiCol_Text, { 1.00, 0.84, 0.25, 1.00 });
-    imgui.Text('RetroAchievements Game Hub');
-    imgui.PopStyleColor();
 	
     local totalAwardedAll = 0;
     local totalAchievementsAll = 0;
@@ -544,64 +834,169 @@ local function render_splash_window()
 		local game = gameSetIds[gameKey];
 		local data = gameProgressData[gameKey];
 
-		local awarded, total, percent = get_progress_values(data);
-		local highestAwardKind = data.HighestAwardKind or '';
+        if (render_set_card(gameKey, game, data, cardWidth, cardHeight, iconSize, 'game_card_')) then
+            select_game(gameKey, gameSetIds, gameProgressData, 'game');
+            viewSplash = false;
 
-		imgui.BeginChild('game_card_' .. tostring(gameKey), { cardWidth, cardHeight }, ImGuiChildFlags_Borders);
+            imgui.End();
+            pop_retro_style();
+            return;
+        end
 
-		local cardHovered = imgui.IsWindowHovered();
-
-		if (cardHovered) then
-			imgui.PushStyleColor(ImGuiCol_Text, { 1.00, 0.95, 0.70, 1.00 });
-		else
-			imgui.PushStyleColor(ImGuiCol_Text, { 0.95, 0.90, 0.55, 1.00 });
-		end
-		imgui.Text(game.Name or gameKey);
-		imgui.PopStyleColor();
-
-		imgui.Spacing();
-
-		if (game.Texture ~= nil) then
-			imgui.Image(tonumber(ffi.cast('uint32_t', game.Texture.image)), { iconSize, iconSize });
-		else
-			imgui.BeginChild('missing_icon_' .. tostring(gameKey), { iconSize, iconSize }, ImGuiChildFlags_Borders);
-			imgui.TextColored({ 0.55, 0.75, 1.00, 1.00 }, 'No Icon');
-			imgui.EndChild();
-		end
-
-		imgui.SameLine();
-
-		local startX, startY = imgui.GetCursorPos();
-
-		imgui.SetCursorPos({ startX, startY + 4 });
-		imgui.TextColored({ 0.70, 0.70, 0.75, 1.00 }, string.format('%d of %d unlocked (%s', awarded, total, string.format('%.1f%%', percent * 100.0)) .. ')');
-
-		imgui.SetCursorPos({ startX, startY + 28 });
-		
-		render_highest_award_progressbar(percent, { -1, 16 }, highestAwardKind);
-
-		imgui.SetCursorPos({ startX, startY + 54 });
-		if (cardHovered) then
-			imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, 'Open achievements');
-		else
-			imgui.TextColored({ 0.45, 0.45, 0.50, 1.00 }, 'Open achievements');
-		end
-
-		imgui.EndChild();
-
-		if (imgui.IsItemHovered() and imgui.IsMouseClicked(0)) then
-			select_game(gameKey);
-			viewSplash = false;
-			
-			imgui.End();
-			pop_retro_style();
-			return;
-		end
-
-		if ((i % 2) == 1 and i < #gameOrder) then
+		if ((i % 2) == 1) then
 			imgui.SameLine();
 		end
 	end
+
+    -- The Job Specific bucket is the next card in the same two-column grid.
+    if ((#gameOrder % 2) == 1) then
+        imgui.SameLine();
+    end
+
+    if (render_job_bucket(cardWidth, cardHeight)) then
+        load_all_job_progress();
+
+        imgui.End();
+        pop_retro_style();
+        return;
+    end
+
+    imgui.End();
+    pop_retro_style();
+end
+
+local jobSplashWindowOpen = T{};
+local function render_job_splash_window()
+    if (not viewJobSplash) then
+        return;
+    end
+
+    push_retro_style();
+
+    imgui.SetNextWindowBgAlpha(0.96);
+    imgui.SetNextWindowSize({ 980, 580 }, ImGuiCond_FirstUseEver);
+
+    jobSplashWindowOpen[1] = viewJobSplash;
+    imgui.Begin('Retro Achievements - Job Specific', jobSplashWindowOpen);
+
+    if (not jobSplashWindowOpen[1]) then
+        viewJobSplash = false;
+    end
+
+    if (imgui.Button('Back to Hub')) then
+        viewJobSplash = false;
+        viewSplash = true;
+
+        imgui.End();
+        pop_retro_style();
+        return;
+    end
+
+    imgui.SameLine();
+    imgui.TextColored({ 0.95, 0.90, 0.55, 1.00 }, 'Job Specific');
+
+    local totalAwardedAll = 0;
+    local totalAchievementsAll = 0;
+
+    for i = 1, #jobOrder do
+        local gameKey = jobOrder[i];
+        local data = jobProgressData[gameKey];
+        local awarded, total = get_progress_values(data);
+        totalAwardedAll = totalAwardedAll + awarded;
+        totalAchievementsAll = totalAchievementsAll + total;
+    end
+
+    local totalPercentAll = 0.0;
+    if (totalAchievementsAll > 0) then
+        totalPercentAll = totalAwardedAll / totalAchievementsAll;
+    end
+
+    imgui.Spacing();
+    imgui.TextColored({ 0.95, 0.90, 0.55, 1.00 }, 'Job Progress');
+    imgui.SameLine();
+    imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, string.format('%d / %d', totalAwardedAll, totalAchievementsAll));
+    imgui.SameLine();
+    imgui.TextColored({ 0.95, 0.90, 0.55, 1.00 }, string.format('(%.1f%%)', totalPercentAll * 100.0));
+
+    imgui.PushStyleColor(ImGuiCol_FrameBg, { 0.24, 0.21, 0.12, 1.00 });
+    imgui.PushStyleColor(ImGuiCol_PlotHistogram, { 0.95, 0.82, 0.30, 1.00 });
+    imgui.ProgressBar(totalPercentAll, { -1, 22 }, '');
+    imgui.PopStyleColor(2);
+
+    imgui.Spacing();
+    imgui.Separator();
+    imgui.Spacing();
+
+    if (#jobOrder == 0) then
+        imgui.TextColored({ 0.70, 0.70, 0.75, 1.00 }, 'No job-specific sets have been configured yet.');
+        imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, 'Add entries to jobSetIds and jobOrder.');
+    else
+        local width = imgui.GetContentRegionAvail();
+        local spacing = 12;
+        local cardWidth = math.floor((width - spacing) / 2);
+        local cardHeight = 160;
+        local iconSize = 96;
+
+        for i = 1, #jobOrder do
+            local gameKey = jobOrder[i];
+            local game = jobSetIds[gameKey];
+            local data = jobProgressData[gameKey];
+
+            if (render_set_card(gameKey, game, data, cardWidth, cardHeight, iconSize, 'job_card_')) then
+                select_game(gameKey, jobSetIds, jobProgressData, 'job');
+                viewJobSplash = false;
+
+                imgui.End();
+                pop_retro_style();
+                return;
+            end
+
+            if ((i % 2) == 1 and i < #jobOrder) then
+                imgui.SameLine();
+            end
+        end
+    end
+
+    imgui.End();
+    pop_retro_style();
+end
+
+local loadingPopupOpen = T{ true };
+local function render_loading_popup()
+    if not loadQueueActive then
+        return;
+    end
+
+    push_retro_style();
+
+    imgui.SetNextWindowBgAlpha(0.97);
+    imgui.SetNextWindowSize({ 460, 190 }, ImGuiCond_Always);
+
+    loadingPopupOpen[1] = true;
+    imgui.Begin('Loading RetroAchievements Data', loadingPopupOpen, ImGuiWindowFlags_NoResize);
+
+    imgui.TextColored({ 0.95, 0.90, 0.55, 1.00 }, 'Loading achievement progress...');
+    imgui.Spacing();
+    imgui.TextWrapped('RetroAchievements requires a separate web request for each set. The addon is loading them one at a time so the hub can remain visible and update as results arrive.');
+    imgui.Spacing();
+
+    local currentName = '';
+    local nextIndex = math.min(loadQueueIndex + 1, loadQueueTotal);
+    local currentKey = loadQueue[nextIndex];
+    if currentKey ~= nil and loadQueueSetIds ~= nil and loadQueueSetIds[currentKey] ~= nil then
+        currentName = tostring(loadQueueSetIds[currentKey].Name or currentKey);
+    end
+
+    imgui.TextColored({ 0.55, 0.85, 1.00, 1.00 }, string.format('%d / %d %s loaded', loadQueueIndex, loadQueueTotal, loadQueueLabel));
+    if currentName ~= '' then
+        imgui.TextColored({ 0.70, 0.70, 0.75, 1.00 }, 'Loading next: ' .. currentName);
+    end
+
+    local percent = 0.0;
+    if loadQueueTotal > 0 then
+        percent = loadQueueIndex / loadQueueTotal;
+    end
+    imgui.ProgressBar(percent, { -1, 18 }, '');
 
     imgui.End();
     pop_retro_style();
@@ -636,18 +1031,28 @@ local function render_achievement_window()
 
     imgui.PushStyleColor(ImGuiCol_Text, { 1.00, 0.84, 0.25, 1.00 });
     local selectedName = 'Retro Achievements';
-	if (selectedGameKey ~= nil and gameSetIds[selectedGameKey] ~= nil) then
-		selectedName = 'Retro Achievements - ' .. tostring(gameSetIds[selectedGameKey].Name or selectedGameKey);
+	if (selectedGameKey ~= nil) then
+        local selectedSetIds = selectedSetType == 'job' and jobSetIds or gameSetIds;
+        if (selectedSetIds[selectedGameKey] ~= nil) then
+            selectedName = tostring(selectedSetIds[selectedGameKey].Name or selectedGameKey);
+        end
 	end
 
 	imgui.Text(selectedName);
-	if (imgui.Button('Back to Games')) then
+	if (imgui.Button('Back to Hub')) then
 		imgui.PopStyleColor();
 		
-		viewSplash = true;
+        if (selectedSetType == 'job') then
+            viewJobSplash = true;
+            viewSplash = false;
+        else
+            viewSplash = true;
+            viewJobSplash = false;
+        end
 		viewAchievements = false;
 		retroAchData = nil;
 		selectedGameKey = nil;
+        selectedSetType = nil;
 		
 		imgui.End();
 		pop_retro_style();
@@ -814,7 +1219,10 @@ end
 * desc : Event called when the Direct3D device is presenting a scene.
 --]]
 ashita.events.register('d3d_present', 'present_cb', function ()
+    process_progressive_load();
     render_setup_window();
     render_splash_window();
+    render_job_splash_window();
     render_achievement_window();
+    render_loading_popup();
 end);
